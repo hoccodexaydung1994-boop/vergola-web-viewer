@@ -1,0 +1,14 @@
+<Project>
+  <!-- Vergola Model Viewer: phần mềm Windows riêng, KHÔNG dùng Revit API.
+       File này chặn Directory.Build.props của Suite ở thư mục cha (cấu hình Revit) áp vào đây. -->
+  <PropertyGroup>
+    <!-- Mỗi lần giao tăng: 1.0 → 1.01 → 1.02… (hiện trên tiêu đề cửa sổ và tên gói zip) -->
+    <ModelViewerRelease>1.0</ModelViewerRelease>
+    <Version>$(ModelViewerRelease).0</Version>
+    <InformationalVersion>$(ModelViewerRelease)</InformationalVersion>
+    <Company>Vergola</Company>
+    <Product>Vergola Model Viewer</Product>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

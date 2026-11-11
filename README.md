@@ -1,6 +1,4 @@
-# Vergola Web Viewer v1.0
-
-Demo: `https://<tài-khoản>.github.io/vergola-web-viewer/?model=samples/Vergola_mau.glb`
+# Vergola Web Viewer v1.2
 
 Xem mô hình Revit (GLB xuất từ Vergola Suite → **Mô hình → Xuất 3D Web (GLB)**) trên trình duyệt. Một file `index.html`, three.js 0.160 nạp từ jsDelivr (cần Internet lần đầu).
 
@@ -15,14 +13,26 @@ Xem mô hình Revit (GLB xuất từ Vergola Suite → **Mô hình → Xuất 3D
 | Vùng | Có gì |
 |---|---|
 | Thanh công cụ dưới đáy | Home · Zoom vào chọn · Đi bộ (WASD, Q/E) · Mặt cắt / hộp cắt · Đo · Tô màu theo thuộc tính · Model Browser · Properties · Cài đặt · Toàn màn hình |
-| ViewCube góc phải trên | Bấm mặt TRÊN / TRƯỚC / PHẢI… để nhìn theo hướng đó; nút 3D = Home |
+| ViewCube góc phải trên | Bấm mặt TRÊN / TRƯỚC / PHẢI… để nhìn theo hướng đó; **kéo ViewCube = xoay** quanh đối tượng đang chọn / tâm mô hình; nút 3D = Home |
 | Model Browser (trái) | Cây Category → Family → Type → đối tượng, hoặc theo Tầng; con mắt ẩn / hiện; ô Tìm (Ctrl+F) theo tên, Type, Element ID, parameter |
 | Properties (phải) | Element ID (Copy), UniqueId, Category, Family, Type, Level, Link + parameter; ô lọc |
-| Chuột phải | Cô lập (I) · Ẩn (H) · Zoom vào (F) · Copy Element ID (Ctrl+C) · Bỏ chọn (Esc) · Hiện tất cả (Shift+H) · Nhìn toàn bộ (Home) |
+| Chuột phải | Cô lập (HI) · Cô lập Category (HC) · Ẩn (HH) · Zoom vào (F) · Copy Element ID (Ctrl+C) · Bỏ chọn (Esc) · Hiện tất cả (HR) · Zoom vừa màn hình (ZF) · Góc nhìn 3D (Home) |
 | Cài đặt | Nền sáng / tối · viền cạnh · lọc theo tầng · góc nhìn đã lưu (trên trình duyệt này) |
 | Copy link góc nhìn | Link kèm camera + ẩn / cô lập + mặt cắt (`#v=…`) |
 
-Chuột: trái xoay · phải / giữa kéo = pan · lăn = zoom · bấm = chọn (Ctrl = chọn thêm) · bấm đúp = zoom vào.
+## Chuột & phím — giống View 3D của Revit
+| Thao tác | Kết quả |
+|---|---|
+| Lăn chuột | Zoom **tại vị trí con trỏ** (lăn lên = lại gần) |
+| Giữ chuột giữa + kéo | Pan (điểm dưới con trỏ đi theo chuột) |
+| **Shift + giữ chuột giữa** + kéo | Xoay quanh **đối tượng đang chọn**; không chọn gì → quanh điểm trên mô hình dưới con trỏ (chấm xanh = tâm xoay) |
+| Ctrl + Shift + chuột trái + kéo | Xoay như trên (khi không tiện chuột giữa / touchpad) |
+| Bấm đúp chuột giữa | Zoom vừa màn hình (giữ hướng nhìn) |
+| Bấm trái | Chọn · Ctrl + bấm = thêm · Shift + bấm = bớt · bấm chỗ trống = bỏ chọn |
+| Kéo chuột trái | Chọn khung: trái → phải = đối tượng nằm trọn (khung liền) · phải → trái = chạm khung (khung nét đứt) |
+| Bấm đúp trái | Zoom vào đối tượng |
+| Phím | HH ẩn · HI cô lập · HC cô lập category · HR hiện lại · ZF / ZE / ZA vừa màn hình · F zoom vào chọn · Esc bỏ chọn |
+| Đi bộ | W A S D / Q E; kéo chuột trái để nhìn |
 
 ## Định dạng GLB của Vergola
 - Mét, Y lên trên (Revit feet, Z-up đã đổi: (x, y, z) → (x, z, −y)); gốc dời về tâm mô hình, đáy = 0 (toạ độ gốc ở `scene.extras.vergola.origin`).
@@ -31,28 +41,12 @@ Chuột: trái xoay · phải / giữa kéo = pan · lăn = zoom · bấm = ch�
 - GLB khác (không có `elementId`) cũng mở được: mỗi mesh là 1 đối tượng.
 - Nén thêm (tuỳ chọn, ngoài Revit): `gltfpack -i in.glb -o out.glb -cc` (meshopt) — viewer giải nén sẵn.
 
-## Đưa lên GitHub Pages
-1. Tạo repo mới (vd `vergola-web-viewer`), chép toàn bộ thư mục này vào, rồi:
-   ```
-   git init
-   git add .
-   git commit -m "Vergola Web Viewer v1.0"
-   git branch -M main
-   git remote add origin https://github.com/<tài-khoản>/vergola-web-viewer.git
-   git push -u origin main
-   ```
-2. Repo → **Settings → Pages** → Source: *Deploy from a branch*, Branch: `main` / `(root)` → Save.
-3. Sau 1–2 phút mở `https://<tài-khoản>.github.io/vergola-web-viewer/`.
-4. Thêm mô hình: đặt `.glb` vào repo (vd `samples/`), mở `…/?model=samples/ten-file.glb`.
+## Xem offline không cần trình duyệt / Internet
+Dùng phần mềm **Vergola Model Viewer** (thư mục `desktop/` của Suite): chạy chính trang này trong WebView2, three.js lưu sẵn trong máy. Xem `desktop/README.md`.
 
-Lưu ý: GitHub Pages là **công khai** với repo public. Mô hình dự án thật đặt trong `models/` (đã có trong `.gitignore`) hoặc dùng repo private + Pages có kiểm soát truy cập. File > 100 MB GitHub không nhận (dùng Git LFS hoặc nén `gltfpack`).
-
-## Cấu trúc
-```
-index.html            viewer 1 file (three.js 0.160 từ jsDelivr)
-samples/              GLB mẫu
-docs/QUY-TAC-WEB-REVIT.md   hợp đồng GLB giữa Revit và web (W1–W15)
-.nojekyll             để Pages phục vụ nguyên file, không chạy Jekyll
-```
-
-Viewer gốc nằm trong Vergola Revit Suite (`web/vergola-viewer/index.html`, nhúng vào DLL). Sửa ở Suite rồi chép sang repo này, hoặc ngược lại — giữ hai bản giống nhau.
+## Lịch sử
+| Phiên bản | Thay đổi |
+|---|---|
+| 1.2 | Điều hướng như View 3D Revit (thay OrbitControls): zoom tại con trỏ, pan chuột giữa, Shift + chuột giữa xoay quanh đối tượng chọn / điểm dưới con trỏ, đúp chuột giữa vừa màn hình, chọn khung trái→phải / phải→trái, Ctrl thêm / Shift bớt, phím HH HI HC HR ZF, kéo ViewCube xoay (Suite v1.80) |
+| 1.1 | Kéo thả / Mở cả trang `.html` Vergola (lấy GLB nhúng); thả file ra ngoài vùng xem không làm trình duyệt mở file đó |
+| 1.0 | Bản đầu (Suite v1.70) |

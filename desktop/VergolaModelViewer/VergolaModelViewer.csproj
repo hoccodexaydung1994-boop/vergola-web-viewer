@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Vergola Model Viewer: xem GLB / trang .html do Vergola Suite xuất, KHÔNG cần Revit, KHÔNG cần Internet.
+       Giao diện = Vergola Web Viewer (index.html) chạy trong WebView2; three.js đọc từ thư mục lib\ cạnh .exe. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>VergolaModelViewer</AssemblyName>
+    <RootNamespace>VergolaModelViewer</RootNamespace>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Viewer: trong repo Suite nằm ở web\vergola-viewer\; trong repo GitHub vergola-web-viewer nằm ở gốc -->
+    <ViewerDir>$(MSBuildProjectDirectory)\..\..\web\vergola-viewer</ViewerDir>
+    <ViewerDir Condition="!Exists('$(ViewerDir)\index.html')">$(MSBuildProjectDirectory)\..\..</ViewerDir>
+    <ThreeVersion>0.160.0</ThreeVersion>
+    <ThreeLib>$(MSBuildProjectDirectory)\lib\three@$(ThreeVersion)</ThreeLib>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2651.64" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <!-- Trang viewer + mẫu, chép vào <output>\web\ -->
+    <Content Include="$(ViewerDir)\index.html" Link="web\index.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(ViewerDir)\samples\*.glb" Link="web\samples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\install-viewer.cmd;..\uninstall-viewer.cmd" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- three.js offline: các file viewer cần (three 0.160 + addons). Tải 1 lần khi build nếu chưa có; máy không có mạng
+       thì build vẫn qua (cảnh báo) và phần mềm tự tải + lưu lần chạy đầu có mạng. -->
+  <ItemGroup>
+    <ThreeFile Include="build/three.module.js" />
+    <ThreeFile Include="examples/jsm/controls/OrbitControls.js" />
+    <ThreeFile Include="examples/jsm/loaders/GLTFLoader.js" />
+    <ThreeFile Include="examples/jsm/utils/BufferGeometryUtils.js" />
+    <ThreeFile Include="examples/jsm/libs/meshopt_decoder.module.js" />
+  </ItemGroup>
+
+  <Target Name="VergolaDownloadThree" BeforeTargets="BeforeBuild">
+    <DownloadFile Condition="!Exists('$(ThreeLib)\%(ThreeFile.Identity)')"
+                  SourceUrl="https://cdn.jsdelivr.net/npm/three@$(ThreeVersion)/%(ThreeFile.Identity)"
+                  DestinationFolder="$(ThreeLib)\%(ThreeFile.RelativeDir)"
+                  Retries="2" ContinueOnError="WarnAndContinue" />
+    <ItemGroup>
+      <Content Include="lib\**\*.js" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

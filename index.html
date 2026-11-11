@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vergola Web Viewer</title>
 <!--
-  Vergola Web Viewer v1.0 — xem mô hình Revit xuất GLB (Vergola Suite → "Xuất 3D Web (GLB)") ngay trên trình duyệt.
+  Vergola Web Viewer v1.1 — xem mô hình Revit xuất GLB (Vergola Suite → "Xuất 3D Web (GLB)") ngay trên trình duyệt.
   Một file HTML, không cần server riêng: three.js nạp từ CDN jsDelivr (cần Internet lần đầu).
   Mở model: kéo thả file .glb vào trang · nút "Mở GLB" · ?model=duong/dan/file.glb (khi chạy trên web server) · bản nhúng sẵn (Vergola xuất "kèm HTML").
   Giao diện theo khuôn Autodesk APS Viewer: thanh công cụ dưới đáy, ViewCube góc phải trên, Model Browser trái, Properties phải, chuột phải = Isolate / Hide / Focus.
@@ -108,6 +108,10 @@ button,input,select{font:inherit;color:inherit}
 #legend .sw{width:12px;height:12px;border-radius:2px;flex:none}
 #toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--vg-text);color:#fff;padding:6px 12px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none}
 #toast.show{opacity:.94}
+#selbox{position:absolute;display:none;pointer-events:none;border:1px solid #1F5FD6;background:rgba(31,95,214,.08);z-index:5}
+#selbox.cross{border-style:dashed;background:rgba(43,178,76,.08);border-color:#2B8A3E}
+#view.orbiting,#view.orbiting canvas{cursor:grab}
+#view.panning,#view.panning canvas{cursor:move}
 @media (max-width:900px){.panel{position:absolute;top:0;bottom:0;z-index:20;width:min(300px,85vw)}#left{left:0}#right{right:0}#cube{transform:scale(.8);transform-origin:top right}}
 </style>
 </head>
@@ -117,8 +121,8 @@ button,input,select{font:inherit;color:inherit}
     <span class="brand">Vergola Web Viewer</span>
     <span class="model" id="modelName">Chưa mở mô hình</span>
     <button class="btn" id="copyLink" title="Copy link kèm góc nhìn, đối tượng ẩn / cô lập, mặt cắt">Copy link góc nhìn</button>
-    <button class="btn primary" id="openBtn" title="Mở file .glb xuất từ Vergola (hoặc kéo thả vào trang)">Mở GLB…</button>
-    <input type="file" id="file" accept=".glb,.gltf" hidden>
+    <button class="btn primary" id="openBtn" title="Mở file .glb hoặc trang .html xuất từ Vergola (hoặc kéo thả vào trang)">Mở GLB…</button>
+    <input type="file" id="file" accept=".glb,.html,.htm" hidden>
   </div>
   <div id="main">
     <aside class="panel" id="left">
@@ -128,8 +132,9 @@ button,input,select{font:inherit;color:inherit}
       <div class="pb"><div class="tree" id="tree"><div class="empty">Mở mô hình để xem cây đối tượng.</div></div></div>
     </aside>
     <div id="view" tabindex="0">
-      <div id="drop"><div class="card"><h2>Mở mô hình Revit (GLB)</h2><p>Kéo thả file .glb xuất từ Vergola vào đây, hoặc bấm nút bên dưới.</p><button class="btn primary" id="openBtn2">Mở GLB…</button></div></div>
-      <div id="cube" title="Bấm mặt để xem theo hướng đó"><div class="c" id="cubeInner">
+      <div id="drop"><div class="card"><h2>Mở mô hình Revit (GLB)</h2><p>Kéo thả file .glb (hoặc trang .html) xuất từ Vergola vào đây, hoặc bấm nút bên dưới.</p><button class="btn primary" id="openBtn2">Mở GLB…</button></div></div>
+      <div id="selbox"></div>
+      <div id="cube" title="Bấm mặt để xem theo hướng đó · kéo để xoay"><div class="c" id="cubeInner">
         <div class="f" data-v="front" style="transform:translateZ(42px)">TRƯỚC</div>
         <div class="f" data-v="back" style="transform:rotateY(180deg) translateZ(42px)">SAU</div>
         <div class="f" data-v="right" style="transform:rotateY(90deg) translateZ(42px)">PHẢI</div>
@@ -193,9 +198,124 @@ button,input,select{font:inherit;color:inherit}
 <script id="vg-embedded" type="application/octet-stream">/*VG_EMBED*/</script>
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+
+// ------------------------------------------------------------------ điều hướng kiểu Revit 3D
+// Lăn chuột = zoom tại con trỏ · giữ chuột giữa = pan · Shift + chuột giữa (hoặc Ctrl + Shift + chuột trái) = xoay quanh đối tượng đang chọn
+// (không chọn: điểm trên mô hình dưới con trỏ) · bấm đúp chuột giữa = zoom vừa màn hình · kéo chuột trái = chọn khung.
+class RevitNav {
+  constructor(cam, dom) {
+    this.cam = cam; this.dom = dom; this.target = new THREE.Vector3();
+    this.pivotFn = () => null; this.pickFn = () => null; this.fitFn = () => {}; this.isWalk = () => false; this.boxFn = null; this.sizeFn = () => 10;
+    this.drag = null; this.lastMidUp = 0;
+    this.marker = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: 0x2BB24C, depthTest: false, transparent: true, opacity: 0.9 }));
+    this.marker.renderOrder = 999; this.marker.visible = false;
+    dom.addEventListener('pointerdown', e => this.down(e));
+    dom.addEventListener('pointermove', e => this.move(e));
+    dom.addEventListener('pointerup', e => this.up(e));
+    dom.addEventListener('pointercancel', e => this.up(e));
+    dom.addEventListener('wheel', e => this.wheel(e), { passive: false });
+    dom.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });   // không bật autoscroll của trình duyệt
+    dom.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+  }
+  update() { this.cam.lookAt(this.target); }
+  ndc(e) { const r = this.dom.getBoundingClientRect(); return new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); }
+  ray(e) { const n = this.ndc(e), o = this.cam.position.clone(); return new THREE.Ray(o, new THREE.Vector3(n.x, n.y, 0.5).unproject(this.cam).sub(o).normalize()); }
+  fwd() { return new THREE.Vector3().subVectors(this.target, this.cam.position).normalize(); }
+  /** điểm thế giới dưới con trỏ: trúng mô hình, không thì trên mặt phẳng qua target vuông góc hướng nhìn */
+  under(e) {
+    const h = this.pickFn(e); if (h) return h.point.clone();
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(this.fwd(), this.target), p = new THREE.Vector3();
+    return this.ray(e).intersectPlane(plane, p) ? p : this.target.clone();
+  }
+  wheel(e) {
+    e.preventDefault(); if (this.isWalk()) return;
+    const p = this.under(e);
+    const step = Math.max(-3, Math.min(3, (e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY) / 100));
+    const s = Math.pow(1.2, step);                     // lăn lên = gần lại (như Revit)
+    this.cam.position.sub(p).multiplyScalar(s).add(p);
+    this.target.sub(p).multiplyScalar(s).add(p);
+    const minD = this.sizeFn() * 0.002, d = this.cam.position.distanceTo(this.target);
+    if (d < minD) this.target.copy(this.cam.position).addScaledVector(this.fwd(), minD);
+    this.update();
+  }
+  down(e) {
+    if (this.drag) return;
+    const walk = this.isWalk();
+    if (e.button === 1) {
+      e.preventDefault();
+      const now = performance.now();
+      if (now - this.lastMidUp < 350) { this.lastMidUp = 0; this.fitFn(); return; }   // bấm đúp chuột giữa = zoom vừa màn hình
+      if (e.shiftKey) this.startOrbit(e, this.pivotFn() || this.under(e));
+      else { const a = this.under(e); this.drag = { kind: 'pan', id: e.pointerId, anchor: a, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(this.fwd(), a) }; this.dom.parentElement.classList.add('panning'); }
+      Object.assign(this.drag, { mid: true, x0: e.clientX, y0: e.clientY });
+    } else if (e.button === 0 && e.shiftKey && e.ctrlKey && !walk) {
+      this.startOrbit(e, this.pivotFn() || this.under(e));          // Ctrl + Shift + chuột trái = xoay (khi không tiện chuột giữa / touchpad)
+    } else if (e.button === 0 && walk) {
+      this.drag = { kind: 'look', id: e.pointerId, x: e.clientX, y: e.clientY };
+    } else if (e.button === 0 && this.boxFn) {
+      this.drag = { kind: 'box', id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, active: false };
+    } else return;
+    try { this.dom.setPointerCapture(e.pointerId); } catch { }
+  }
+  startOrbit(e, pivot) {
+    this.drag = { kind: 'orbit', id: e.pointerId, x: e.clientX, y: e.clientY, pivot: pivot.clone() };
+    this.marker.position.copy(pivot); this.marker.visible = true; this.scaleMarker();
+    this.dom.parentElement.classList.add('orbiting');
+  }
+  scaleMarker() { if (this.marker.visible) this.marker.scale.setScalar(Math.max(1e-4, this.cam.position.distanceTo(this.marker.position) * 0.008)); }
+  /** xoay quanh pivot: ngang quanh trục đứng (Y), dọc quanh trục ngang của màn hình; không lật qua đỉnh */
+  orbitBy(dx, dy, pivot) {
+    const yaw = -dx * 0.008, pitch = -dy * 0.008;
+    const right = new THREE.Vector3().crossVectors(this.fwd(), this.cam.up).normalize();
+    const qp = new THREE.Quaternion().setFromAxisAngle(right, pitch);
+    const f2 = this.fwd().applyQuaternion(qp);
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    if (Math.abs(f2.y) < 0.995) q.multiply(qp);
+    for (const v of [this.cam.position, this.target]) v.sub(pivot).applyQuaternion(q).add(pivot);
+    this.update(); this.scaleMarker();
+  }
+  move(e) {
+    const d = this.drag; if (!d || d.id !== e.pointerId) return;
+    if (d.kind === 'orbit') { this.orbitBy(e.clientX - d.x, e.clientY - d.y, d.pivot); d.x = e.clientX; d.y = e.clientY; }
+    else if (d.kind === 'pan') {
+      const p = new THREE.Vector3(); if (!this.ray(e).intersectPlane(d.plane, p)) return;
+      const delta = d.anchor.clone().sub(p); this.cam.position.add(delta); this.target.add(delta); this.update();
+    } else if (d.kind === 'look') {
+      const yaw = -(e.clientX - d.x) * 0.004, pitch = -(e.clientY - d.y) * 0.004; d.x = e.clientX; d.y = e.clientY;
+      const right = new THREE.Vector3().crossVectors(this.fwd(), this.cam.up).normalize();
+      const off = this.target.clone().sub(this.cam.position);
+      const o2 = off.clone().applyAxisAngle(right, pitch); if (Math.abs(o2.clone().normalize().y) < 0.98) off.copy(o2);
+      off.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw); this.target.copy(this.cam.position).add(off); this.update();
+    } else if (d.kind === 'box') {
+      d.x = e.clientX; d.y = e.clientY;
+      if (!d.active && Math.hypot(d.x - d.x0, d.y - d.y0) > 4) d.active = true;
+      if (d.active) this.drawBox(d);
+    }
+  }
+  drawBox(d) {
+    const b = $('selbox'), r = this.dom.parentElement.getBoundingClientRect();
+    b.style.display = 'block'; b.classList.toggle('cross', d.x < d.x0);
+    b.style.left = Math.min(d.x, d.x0) - r.left + 'px'; b.style.top = Math.min(d.y, d.y0) - r.top + 'px';
+    b.style.width = Math.abs(d.x - d.x0) + 'px'; b.style.height = Math.abs(d.y - d.y0) + 'px';
+  }
+  up(e) {
+    const d = this.drag; if (!d || d.id !== e.pointerId) return;
+    this.drag = null; try { this.dom.releasePointerCapture(e.pointerId); } catch { }
+    this.marker.visible = false; this.dom.parentElement.classList.remove('orbiting', 'panning');
+    if (d.mid) this.lastMidUp = Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 4 ? performance.now() : 0;   // chỉ tính là 'bấm' khi gần như không kéo
+    if (d.kind === 'box') {
+      $('selbox').style.display = 'none';
+      if (d.active && this.boxFn) {
+        const r = this.dom.getBoundingClientRect();
+        this.boxFn({ x1: Math.min(d.x, d.x0) - r.left, y1: Math.min(d.y, d.y0) - r.top, x2: Math.max(d.x, d.x0) - r.left, y2: Math.max(d.y, d.y0) - r.top, w: r.width, h: r.height }, d.x < d.x0, e);
+        this.suppressClick = true;
+      }
+    }
+  }
+}
 
 // ------------------------------------------------------------------ cơ bản
 const $ = id => document.getElementById(id);
@@ -207,8 +327,8 @@ view.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 20000);
 camera.position.set(30, 25, 30);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.dampingFactor = 0.12; controls.screenSpacePanning = true;
+const controls = new RevitNav(camera, renderer.domElement);
+scene.add(controls.marker);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a96a3, 1.15));
 const sun = new THREE.DirectionalLight(0xffffff, 1.1); sun.position.set(1, 2, 1.5); scene.add(sun);
 const modelRoot = new THREE.Group(); scene.add(modelRoot);
@@ -243,7 +363,30 @@ async function openUrl(url) {
     parseBuffer(buf.buffer, decodeURIComponent(url.split('/').pop()));
   } catch (e) { progress(null); status(''); alert('Không tải được ' + url + ': ' + e.message + (location.protocol === 'file:' ? '\nMở trang từ máy (file://) thì trình duyệt chặn tải file khác → kéo thả file .glb vào trang.' : '')); }
 }
-function openFile(f) { if (!f) return; status('Đang đọc ' + f.name + '…'); progress(0.3); const r = new FileReader(); r.onload = () => parseBuffer(r.result, f.name); r.readAsArrayBuffer(f); }
+function openFile(f) {
+  if (!f) return;
+  status('Đang đọc ' + f.name + '…'); progress(0.3);
+  if (/\.html?$/i.test(f.name)) { f.text().then(t => openHtml(t, f.name)).catch(e => { progress(null); status(''); alert('Không đọc được ' + f.name + ': ' + e.message); }); return; }
+  const r = new FileReader(); r.onload = () => parseBuffer(r.result, f.name); r.readAsArrayBuffer(f);
+}
+/** Trang .html Vergola xuất (GLB nhúng base64 trong #vg-embedded) → mở mô hình bên trong. */
+function openHtml(text, fname) {
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const b64 = (doc.getElementById('vg-embedded')?.textContent || '').trim();
+  const nm = doc.querySelector('meta[name=vg-model]');
+  const name = nm ? nm.content : fname.replace(/\.html?$/i, '.glb');
+  if (!b64 || b64.startsWith('/*')) { progress(null); status(''); alert(fname + ' không nhúng mô hình (GLB > 120 MB) → kéo thả file ' + name + ' vào trang.'); return; }
+  status('Đang giải nén mô hình nhúng…');
+  decodeB64(b64).then(buf => parseBuffer(buf, name)).catch(e => { progress(null); status('Không giải nén được mô hình nhúng: ' + e.message); });
+}
+function decodeB64(b64) {
+  const slow = () => { const bin = atob(b64), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); return buf.buffer; };
+  // fetch(data:) nhanh hơn với mô hình lớn; trang bị chính sách bảo mật chặn thì giải mã bằng atob
+  return fetch('data:application/octet-stream;base64,' + b64).then(r => r.arrayBuffer()).catch(() => slow());
+}
+// thả file ra ngoài vùng xem: không để trình duyệt mở file đó thay cho viewer
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault(); if (e.target === document.body || !view.contains(e.target)) openFile(e.dataTransfer.files[0]); });
 $('openBtn').onclick = $('openBtn2').onclick = () => $('file').click();
 $('file').onchange = e => openFile(e.target.files[0]);
 view.addEventListener('dragover', e => { e.preventDefault(); $('drop').classList.add('over'); });
@@ -285,7 +428,7 @@ function setModel(gltf, name) {
 }
 
 // ------------------------------------------------------------------ trạng thái hiển thị
-function refreshPickable() { pickable = []; for (const el of elements) if (!el.hidden && !el.ghost) pickable.push(...el.meshes); }
+function refreshPickable() { if (!elements.length || !elBoxes.has(elements[0])) elBoxes.clear(); pickable = []; for (const el of elements) if (!el.hidden && !el.ghost) pickable.push(...el.meshes); }
 function applyState(el) {
   const sel = selected.has(el);
   for (const m of el.meshes) {
@@ -323,9 +466,26 @@ function fitBox(box, dir) {
 }
 function boxOf(list) { const b = new THREE.Box3(); for (const el of list) for (const m of el.meshes) if (m.visible) b.expandByObject(m); return b; }
 function home() { fitBox(modelBox, new THREE.Vector3(1, 0.8, 1)); }
+function zoomFit() { const vis = elements.filter(e => !e.hidden && !e.ghost); fitBox(vis.length && vis.length < elements.length ? boxOf(vis) : modelBox); }
+controls.pickFn = e => pick(e);
+controls.pivotFn = () => selected.size ? boxOf([...selected]).getCenter(new THREE.Vector3()) : null;
+controls.fitFn = () => zoomFit();
+controls.isWalk = () => walk;
+controls.boxFn = (r, crossing, e) => boxSelect(r, crossing, e);
+controls.sizeFn = () => modelBox.isEmpty() ? 10 : modelBox.getSize(new THREE.Vector3()).length();
+// kéo ViewCube = xoay quanh đối tượng đang chọn / tâm mô hình; bấm (không kéo) = xem theo mặt
+let cubeDrag = null, cubeDragged = false;
+$('cube').addEventListener('pointerdown', e => { if (e.button !== 0) return; cubeDragged = false; cubeDrag = { x: e.clientX, y: e.clientY, id: e.pointerId, pivot: controls.pivotFn() || (modelBox.isEmpty() ? controls.target.clone() : modelBox.getCenter(new THREE.Vector3())) }; $('cube').setPointerCapture(e.pointerId); });
+$('cube').addEventListener('pointermove', e => {
+  if (!cubeDrag || cubeDrag.id !== e.pointerId) return;
+  const dx = e.clientX - cubeDrag.x, dy = e.clientY - cubeDrag.y;
+  if (!cubeDragged && Math.hypot(dx, dy) < 4) return;
+  cubeDragged = true; controls.orbitBy(dx, dy, cubeDrag.pivot); cubeDrag.x = e.clientX; cubeDrag.y = e.clientY;
+});
+$('cube').addEventListener('pointerup', e => { if (cubeDrag && cubeDrag.id === e.pointerId) { cubeDrag = null; try { $('cube').releasePointerCapture(e.pointerId); } catch { } } });
 function focusSel() { const list = selected.size ? [...selected] : elements.filter(e => !e.hidden && !e.ghost); fitBox(boxOf(list)); }
 const DIRS = { front: [0, 0, 1], back: [0, 0, -1], right: [1, 0, 0], left: [-1, 0, 0], top: [0, 1, 0.0001], bottom: [0, -1, 0.0001] };
-document.querySelectorAll('#cube .f').forEach(f => f.onclick = () => { const b = selected.size ? boxOf([...selected]) : modelBox; fitBox(b, new THREE.Vector3(...DIRS[f.dataset.v])); });
+document.querySelectorAll('#cube .f').forEach(f => f.onclick = () => { if (cubeDragged) { cubeDragged = false; return; } const b = selected.size ? boxOf([...selected]) : modelBox; fitBox(b, new THREE.Vector3(...DIRS[f.dataset.v])); });
 $('home3d').onclick = $('tHome').onclick = home;
 $('tFit').onclick = focusSel;
 function updateCube() {
@@ -346,14 +506,45 @@ function pick(ev) {
   return null;
 }
 let downAt = null;
+/** như Revit: không phím = thay vùng chọn; Ctrl = thêm; Shift = bớt */
+function selectRevit(list, e) {
+  if (e.shiftKey) { const prev = [...selected]; list.forEach(x => selected.delete(x)); prev.forEach(applyState); renderProps(); markTree(); $('stSel').textContent = selected.size ? selected.size + ' đang chọn' : ''; return; }
+  if (e.ctrlKey) { select(list.filter(x => !selected.has(x)), true); return; }
+  select(list, false);
+}
+const elBoxes = new Map();
+function elBox(el) { let b = elBoxes.get(el); if (!b) { b = new THREE.Box3(); for (const m of el.meshes) b.expandByObject(m); elBoxes.set(el, b); } return b; }
+/** chọn khung: trái → phải = nằm TRỌN trong khung; phải → trái = CHẠM khung (như Revit) */
+function boxSelect(r, crossing, e) {
+  if (mode === 'measure') return;
+  const v = new THREE.Vector3(), hits = [];
+  for (const el of elements) {
+    if (el.hidden || el.ghost) continue;
+    const b = elBox(el); if (b.isEmpty()) continue;
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, behind = false;
+    for (let i = 0; i < 8; i++) {
+      v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).project(camera);
+      if (v.z > 1) behind = true;
+      const sx = (v.x + 1) / 2 * r.w, sy = (1 - v.y) / 2 * r.h;
+      x1 = Math.min(x1, sx); y1 = Math.min(y1, sy); x2 = Math.max(x2, sx); y2 = Math.max(y2, sy);
+    }
+    if (behind) continue;
+    const inside = x1 >= r.x1 && x2 <= r.x2 && y1 >= r.y1 && y2 <= r.y2;
+    const touch = x2 >= r.x1 && x1 <= r.x2 && y2 >= r.y1 && y1 <= r.y2;
+    if (crossing ? touch : inside) hits.push(el);
+  }
+  selectRevit(hits, e);
+  if (!e.shiftKey && !e.ctrlKey) toast(`Chọn khung ${crossing ? '(chạm)' : '(nằm trọn)'}: ${hits.length} đối tượng`);
+}
 renderer.domElement.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY, b: e.button }; hideCtx(); });
 renderer.domElement.addEventListener('pointerup', e => {
+  if (controls.suppressClick) { controls.suppressClick = false; downAt = null; return; }
   if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 4) { downAt = null; return; }
   const b = downAt.b; downAt = null;
   if (b === 0) {
     const h = pick(e);
     if (mode === 'measure') { if (h) measurePoint(h, e); return; }
-    if (h) select([h.object.userData.__el], e.ctrlKey || e.shiftKey); else if (!e.ctrlKey) select([], false);
+    if (h) selectRevit([h.object.userData.__el], e); else if (!e.ctrlKey && !e.shiftKey) select([], false);
   } else if (b === 2) {
     const h = pick(e);
     if (h && !selected.has(h.object.userData.__el)) select([h.object.userData.__el], false);
@@ -366,11 +557,11 @@ const ctx = $('ctx');
 function showCtx(x, y) {
   const n = selected.size, items = [];
   if (n) {
-    items.push(['Cô lập', 'I', () => isolate([...selected])], ['Ẩn', 'H', () => hide([...selected])], ['Zoom vào', 'F', focusSel]);
+    items.push(['Cô lập', 'HI', () => isolate([...selected])], ['Cô lập Category', 'HC', isolateCategory], ['Ẩn', 'HH', () => hide([...selected])], ['Zoom vào', 'F', focusSel]);
     if (n === 1) items.push(['Copy Element ID', 'Ctrl+C', copyIds]); else items.push([`Copy ${n} Element ID`, 'Ctrl+C', copyIds]);
     items.push(null, ['Bỏ chọn', 'Esc', () => select([], false)]);
   }
-  items.push(['Hiện tất cả', 'Shift+H', showAll], ['Nhìn toàn bộ', 'Home', home]);
+  items.push(['Hiện tất cả', 'HR', showAll], ['Zoom vừa màn hình', 'ZF · đúp chuột giữa', zoomFit], ['Góc nhìn 3D mặc định', 'Home', home]);
   ctx.innerHTML = '';
   for (const it of items) {
     if (!it) { ctx.appendChild(document.createElement('hr')); continue; }
@@ -388,16 +579,27 @@ async function copyIds() {
 }
 
 // ------------------------------------------------------------------ phím tắt
+let seq = null;
+function isolateCategory() { const cats = new Set([...selected].map(x => x.data.category)); isolate(elements.filter(x => cats.has(x.data.category))); }
 addEventListener('keydown', e => {
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('left').classList.remove('hidden'); $('tTree').classList.add('on'); $('search').focus(); return; }
   if (typing) { if (e.key === 'Escape') document.activeElement.blur(); return; }
   if (walk && 'wasdqe'.includes(e.key.toLowerCase()) && !e.ctrlKey) { keys.add(e.key.toLowerCase()); return; }
+  // phím tắt 2 chữ như Revit: HH ẩn, HI cô lập, HC cô lập category, HR hiện lại; ZF / ZE / ZA zoom vừa màn hình
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (!e.ctrlKey && !e.altKey && k.length === 1) {
+    const now = performance.now();
+    if (seq && now - seq.t < 1200) {
+      const code = seq.k + k; seq = null;
+      const run = { hh: () => hide([...selected]), hi: () => isolate([...selected]), hc: isolateCategory, hr: showAll, zf: zoomFit, ze: zoomFit, za: zoomFit }[code];
+      if (run) { run(); status(''); return; }
+    } else seq = null;
+    if (k === 'h' || k === 'z') { seq = { k, t: now }; status('Phím tắt: ' + k.toUpperCase() + '…'); return; }
+  }
   switch (e.key) {
-    case 'Escape': if (mode === 'measure' && pending) { pending.dispose(); pending = null; } else select([], false); hideCtx(); break;
+    case 'Escape': seq = null; status(''); if (mode === 'measure' && pending) { pending.dispose(); pending = null; } else select([], false); hideCtx(); break;
     case 'i': case 'I': isolate([...selected]); break;
-    case 'h': if (!e.shiftKey) hide([...selected]); break;
-    case 'H': showAll(); break;
     case 'f': case 'F': focusSel(); break;
     case 'Home': home(); break;
     case 'm': case 'M': setMode(mode === 'measure' ? '' : 'measure'); break;
@@ -483,7 +685,7 @@ $('search').addEventListener('input', () => {
 // ------------------------------------------------------------------ Properties
 function renderProps() {
   const box = $('props'), q = $('propSearch').value.trim().toLowerCase();
-  if (!selected.size) { box.innerHTML = '<div class="empty">Bấm một đối tượng để xem thuộc tính.<br>Ctrl + bấm = chọn thêm · chuột phải = Cô lập / Ẩn / Zoom · Esc = bỏ chọn.</div>'; return; }
+  if (!selected.size) { box.innerHTML = '<div class="empty">Bấm một đối tượng để xem thuộc tính.<br><b>Điều hướng như Revit:</b> lăn chuột = zoom tại con trỏ · giữ chuột giữa = pan · <b>Shift + chuột giữa</b> (hoặc <b>Ctrl + Shift + chuột trái</b>) = xoay quanh đối tượng đang chọn (không chọn: điểm dưới con trỏ) · bấm đúp chuột giữa = vừa màn hình.<br>Kéo chuột trái = chọn khung (trái → phải: nằm trọn · phải → trái: chạm) · Ctrl + bấm = thêm · Shift + bấm = bớt · Esc = bỏ chọn.<br>Phím: HH ẩn · HI cô lập · HC cô lập category · HR hiện lại · ZF vừa màn hình.</div>'; return; }
   if (selected.size > 1) {
     const by = {}; for (const el of selected) { const k = val(el, 'category'); by[k] = (by[k] || 0) + 1; }
     box.innerHTML = `<table class="props"><tr><th colspan="2">${selected.size} đối tượng đang chọn</th></tr>${Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td class="k">${esc(k)}</td><td>${n}</td></tr>`).join('')}</table>`;
@@ -661,7 +863,7 @@ $('viewSave').onclick = () => {
 let walk = false; const keys = new Set();
 $('tWalk').onclick = () => {
   walk = !walk; $('tWalk').classList.toggle('on', walk);
-  if (walk) { const d = new THREE.Vector3().subVectors(controls.target, camera.position).normalize(); controls.target.copy(camera.position).addScaledVector(d, 1); toast('Đi bộ: W A S D di chuyển, Q / E lên xuống, kéo chuột để nhìn'); }
+  if (walk) { const d = new THREE.Vector3().subVectors(controls.target, camera.position).normalize(); controls.target.copy(camera.position).addScaledVector(d, 1); toast('Đi bộ: W A S D di chuyển, Q / E lên xuống, kéo chuột trái để nhìn'); }
 };
 const clock = new THREE.Clock();
 function stepWalk(dt) {
@@ -690,9 +892,7 @@ if (embedded && !embedded.startsWith('/*')) {
   status('Đang giải nén mô hình nhúng…');
   const nm = document.querySelector('meta[name=vg-model]');
   const name = nm ? nm.content : 'model.glb';
-  const slow = () => { const bin = atob(embedded), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); return buf.buffer; };
-  // fetch(data:) nhanh hơn với mô hình lớn; trang bị chính sách bảo mật chặn thì giải mã bằng atob
-  fetch('data:application/octet-stream;base64,' + embedded).then(r => r.arrayBuffer()).catch(() => slow())
+  decodeB64(embedded)
     .then(buf => parseBuffer(buf, name)).catch(e => { status('Không giải nén được mô hình nhúng: ' + e.message); });
 } else if (qs.get('model')) openUrl(qs.get('model'));
 </script>
