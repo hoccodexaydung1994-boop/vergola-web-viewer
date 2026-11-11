@@ -1,4 +1,4 @@
-# Vergola Web Viewer v1.2
+# Vergola Web Viewer v1.2.1
 
 Xem mô hình Revit (GLB xuất từ Vergola Suite → **Mô hình → Xuất 3D Web (GLB)**) trên trình duyệt. Một file `index.html`, three.js 0.160 nạp từ jsDelivr (cần Internet lần đầu).
 
@@ -47,6 +47,7 @@ Dùng phần mềm **Vergola Model Viewer** (thư mục `desktop/` của Suite):
 ## Lịch sử
 | Phiên bản | Thay đổi |
 |---|---|
+| 1.2.1 | Sửa: bấm mặt ViewCube không đổi hướng nhìn (bắt chuột quá sớm khi thêm kéo ViewCube) |
 | 1.2 | Điều hướng như View 3D Revit (thay OrbitControls): zoom tại con trỏ, pan chuột giữa, Shift + chuột giữa xoay quanh đối tượng chọn / điểm dưới con trỏ, đúp chuột giữa vừa màn hình, chọn khung trái→phải / phải→trái, Ctrl thêm / Shift bớt, phím HH HI HC HR ZF, kéo ViewCube xoay (Suite v1.80) |
 | 1.1 | Kéo thả / Mở cả trang `.html` Vergola (lấy GLB nhúng); thả file ra ngoài vùng xem không làm trình duyệt mở file đó |
 | 1.0 | Bản đầu (Suite v1.70) |

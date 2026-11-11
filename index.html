@@ -475,12 +475,13 @@ controls.boxFn = (r, crossing, e) => boxSelect(r, crossing, e);
 controls.sizeFn = () => modelBox.isEmpty() ? 10 : modelBox.getSize(new THREE.Vector3()).length();
 // kéo ViewCube = xoay quanh đối tượng đang chọn / tâm mô hình; bấm (không kéo) = xem theo mặt
 let cubeDrag = null, cubeDragged = false;
-$('cube').addEventListener('pointerdown', e => { if (e.button !== 0) return; cubeDragged = false; cubeDrag = { x: e.clientX, y: e.clientY, id: e.pointerId, pivot: controls.pivotFn() || (modelBox.isEmpty() ? controls.target.clone() : modelBox.getCenter(new THREE.Vector3())) }; $('cube').setPointerCapture(e.pointerId); });
+$('cube').addEventListener('pointerdown', e => { if (e.button !== 0) return; cubeDragged = false; cubeDrag = { x: e.clientX, y: e.clientY, id: e.pointerId, pivot: controls.pivotFn() || (modelBox.isEmpty() ? controls.target.clone() : modelBox.getCenter(new THREE.Vector3())) }; });   // KHÔNG bắt chuột ngay: bắt sớm thì click rơi vào #cube, mặt cube không nhận click
 $('cube').addEventListener('pointermove', e => {
   if (!cubeDrag || cubeDrag.id !== e.pointerId) return;
   const dx = e.clientX - cubeDrag.x, dy = e.clientY - cubeDrag.y;
   if (!cubeDragged && Math.hypot(dx, dy) < 4) return;
-  cubeDragged = true; controls.orbitBy(dx, dy, cubeDrag.pivot); cubeDrag.x = e.clientX; cubeDrag.y = e.clientY;
+  if (!cubeDragged) { cubeDragged = true; try { $('cube').setPointerCapture(e.pointerId); } catch { } }   // chỉ bắt chuột khi đã thật sự kéo
+  controls.orbitBy(dx, dy, cubeDrag.pivot); cubeDrag.x = e.clientX; cubeDrag.y = e.clientY;
 });
 $('cube').addEventListener('pointerup', e => { if (cubeDrag && cubeDrag.id === e.pointerId) { cubeDrag = null; try { $('cube').releasePointerCapture(e.pointerId); } catch { } } });
 function focusSel() { const list = selected.size ? [...selected] : elements.filter(e => !e.hidden && !e.ghost); fitBox(boxOf(list)); }
